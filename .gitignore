@@ -1,0 +1,33 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test and profiler outputs
+.pytest_cache/
+artifacts/
+logs/
+*.json
+*.csv
+
+# Large model files
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Operating system files
+.DS_Store
+Thumbs.db
