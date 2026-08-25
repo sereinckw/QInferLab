@@ -111,6 +111,144 @@ class PreNormFeedForwardBlock(nn.Module):
         return sum(parameter.numel() for parameter in self.parameters())
 
 
+class CausalSelfAttention(nn.Module):
+    """Multi-head self-attention with a causal mask."""
+
+    def __init__(
+        self,
+        hidden_size:int,
+        num_heads:int,
+        bias:bool=False,
+    )->None:
+        super().__init__()
+
+        if hidden_size<=0:
+            raise ValueError("hidden_size must be positive")
+
+        if num_heads<=0:
+            raise ValueError("num_heads must be positive")
+
+        if hidden_size%num_heads!=0:
+            raise ValueError(
+                "hidden_size must be divisible by num_heads"
+            )
+
+        self.hidden_size=hidden_size
+        self.num_heads=num_heads
+        self.head_dim=hidden_size//num_heads
+        self.scale=self.head_dim**-0.5
+
+        self.query_proj=nn.Linear(
+            hidden_size,
+            hidden_size,
+            bias=bias,
+        )
+
+        self.key_proj=nn.Linear(
+            hidden_size,
+            hidden_size,
+            bias=bias,
+        )
+
+        self.value_proj=nn.Linear(
+            hidden_size,
+            hidden_size,
+            bias=bias,
+        )
+
+        self.output_proj=nn.Linear(
+            hidden_size,
+            hidden_size,
+            bias=bias,
+        )
+
+    def _split_heads(self,tensor:Tensor)->Tensor:
+        batch_size,sequence_length,_=tensor.shape
+
+        tensor=tensor.view(
+            batch_size,
+            sequence_length,
+            self.num_heads,
+            self.head_dim,
+        )
+
+        return tensor.transpose(1,2)
+
+    def _merge_heads(self,tensor:Tensor)->Tensor:
+        batch_size,_,sequence_length,_=tensor.shape
+
+        tensor=tensor.transpose(1,2).contiguous()
+
+        return tensor.view(
+            batch_size,
+            sequence_length,
+            self.hidden_size,
+        )
+
+    def forward(self,hidden_states:Tensor)->Tensor:
+        if hidden_states.ndim!=3:
+            raise ValueError(
+                "hidden_states must have shape"
+                "(batch_size, sequence_length, hidden_size)"
+            )
+        if hidden_states.shape[-1]!=self.hidden_size:
+            raise ValueError(
+                "The last input dimensioin must equal hidden_size"
+            )
+
+        query = self._split_heads(
+            self.query_proj(hidden_states)
+        )
+        key=self._split_heads(
+            self.key_proj(hidden_states)
+        )
+        value=self._split_heads(
+            self.value_proj(hidden_states)
+        )
+
+        attention_scores=torch.matmul(
+            query,
+            key.transpose(-2,-1),
+        )
+        attention_scores=attention_scores*self.scale
+
+        sequence_length=hidden_states.shape[1]
+
+        causal_mask=torch.ones(
+            sequence_length,
+            sequence_length,
+            device=hidden_states.device,
+            dtype=torch.bool,
+        ).triu(diagonal=1)
+
+        attention_scores=attention_scores.masked_fill(
+            causal_mask,
+            float("-inf"),
+        )
+
+        attention_weights=torch.softmax(
+            attention_scores.float(),
+            dim=-1,
+        ).to(query.dtype)
+
+        context=torch.matmul(
+            attention_weights,
+            value,
+        )
+
+        context=self._merge_heads(context)
+        output=self.output_proj(context)
+
+        return output
+
+    def parameter_count(self)->int:
+        return sum(
+            parameter.numel() for parameter in self.parameters()
+        )
+
+
+        
+
 
 
         
